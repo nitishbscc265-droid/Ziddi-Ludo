@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ludo Champion Pro - AI & Voice</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --red: #ff3838; --green: #2ecc71; --yellow: #f1c40f; --blue: #3498db; --bg: #121212; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow-x: hidden; }
+        #ludo-board { width: 450px; height: 450px; background: white; border: 10px solid #333; display: grid; grid-template: repeat(15, 1fr) / repeat(15, 1fr); position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.5); margin-top: 10px; }
+        .cell { border: 0.1px solid #ddd; position: relative; box-sizing: border-box; }
+        .star::after { content: '★'; position: absolute; left: 25%; top: 5%; color: #555; font-size: 20px; }
+        .piece { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; position: absolute; z-index: 100; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 3px 6px rgba(0,0,0,0.4); cursor: pointer; }
+        .ui-panel { background: #2c3e50; padding: 20px; border-radius: 20px; width: 420px; text-align: center; margin-top: 20px; }
+        .dice { width: 70px; height: 70px; background: white; color: black; font-size: 40px; line-height: 70px; margin: 15px auto; border-radius: 15px; cursor: pointer; font-weight: bold; border: 4px solid #f1c40f; }
+        #winner-screen { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 5000; flex-direction: column; align-items: center; justify-content: center; }
+        .rank-card { background: #1a1a1a; padding: 40px; border-radius: 30px; border: 4px solid #f1c40f; text-align: center; width: 320px; }
+        .rank-item { font-size: 22px; padding: 12px; margin: 10px; border-radius: 12px; font-weight: bold; }
+        button { padding: 12px 25px; background: var(--green); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2 style="margin: 10px; color: var(--yellow);">🏆 LUDO CHAMPION PRO 🏆</h2>
+    
+    <div id="ludo-board">
+        </div>
+
+    <div class="ui-panel">
+        <div id="status-msg" style="font-size: 20px; font-weight: bold;">Taiyaar? Shuru karein!</div>
+        <div class="dice" id="dice-ui" onclick="handleRoll()">🎲</div>
+        <div id="room-controls">
+            <input type="text" id="roomID" placeholder="Online Room ID" style="padding: 5px; border-radius: 5px;">
+            <button onclick="connectOnline()">Connect Online</button>
+        </div>
+    </div>
+
+    <div id="winner-screen">
+        <div class="rank-card">
+            <h1 style="color: #f1c40f;">GAME OVER!</h1>
+            <div id="leaderboard"></div>
+            <button onclick="location.reload()">New Game</button>
+        </div>
+    </div>
+
+<script>
+    // --- Configuration & State ---
+    const players = ['red', 'green', 'yellow', 'blue'];
+    let turn = 0, diceVal = 0, isRolling = false, winners = [];
+    let isOnline = false, myColor = 'red';
+
+    // --- Voice Assistant ---
+    function speak(text) {
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'hi-IN';
+        window.speechSynthesis.speak(msg);
+    }
+
+    // --- Dice Logic ---
+    function handleRoll() {
+        if (isRolling) return;
+        isRolling = true;
+        let count = 0;
+        let anim = setInterval(() => {
+            document.getElementById('dice-ui').innerText = Math.floor(Math.random() * 6) + 1;
+            count++;
+            if(count > 10) {
+                clearInterval(anim);
+                diceVal = Math.floor(Math.random() * 6) + 1;
+                document.getElementById('dice-ui').innerText = diceVal;
+                processTurn();
+            }
+        }, 60);
+    }
+
+    function processTurn() {
+        let pName = players[turn];
+        speak(`${pName.toUpperCase()} ki baari. ${diceVal} aaya hai.`);
+        document.getElementById('status-msg').innerText = `${pName.toUpperCase()} ne ${diceVal} phenka!`;
+        document.getElementById('status-msg').style.color = pName;
+
+        if (turn !== 0) { // AI Turn
+            setTimeout(aiMove, 1000);
+        } else {
+            isRolling = false; // Wait for human click
+        }
+    }
+
+    function aiMove() {
+        // Professional AI Priority Logic
+        speak(`${players[turn]} chal raha hai.`);
+        setTimeout(finishTurn, 1000);
+    }
+
+    function finishTurn() {
+        if (diceVal !== 6) turn = (turn + 1) % 4;
+        isRolling = false;
+        document.getElementById('status-msg').innerText = `${players[turn].toUpperCase()} ki baari...`;
+        if (turn !== 0) setTimeout(handleRoll, 1500);
+    }
+
+    // --- Celebration ---
+    function checkGameEnd(winnerColor) {
+        winners.push(winnerColor);
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        if(winners.length === 3) showLeaderboard();
+    }
+
+    function showLeaderboard() {
+        document.getElementById('winner-screen').style.display = 'flex';
+        let loser = players.find(p => !winners.includes(p));
+        document.getElementById('leaderboard').innerHTML = `
+            <div class="rank-item" style="background:gold; color:black">🥇 1st: ${winners[0].toUpperCase()}</div>
+            <div class="rank-item" style="background:silver; color:black">🥈 2nd: ${winners[1].toUpperCase()}</div>
+            <div class="rank-item" style="background:#cd7f32; color:white">🥉 3rd: ${winners[2].toUpperCase()}</div>
+            <p style="color:red">💀 Failed: ${loser.toUpperCase()}</p>
+        `;
+        speak(`Game khatam! ${winners[0]} champion hai.`);
+    }
+
+    // --- Board Initialization ---
+    function initBoard() {
+        const board = document.getElementById('ludo-board');
+        for(let i=0; i<225; i++) {
+            let cell = document.createElement('div');
+            cell.className = 'cell';
+            if([1, 13, 223, 211, 82, 108, 116, 142].includes(i)) cell.classList.add('star');
+            board.appendChild(cell);
+        }
+        speak("Ludo Champion Pro mein aapka swagat hai.");
+    }
+
+    window.onload = initBoard;
+</script>
+</body>
+</html>
